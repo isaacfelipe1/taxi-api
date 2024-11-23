@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import prisma from '../config/database';
-import { getRouteDetails } from '../services/rideService';
+import { getRouteDetails, getStaticMapUrl } from '../services/rideService';
 
 export const getCustomerRides = async (
   req: Request,
@@ -8,6 +8,7 @@ export const getCustomerRides = async (
 ): Promise<Response> => {
   const { customer_id } = req.params;
   const { driver_id } = req.query;
+
   if (!customer_id) {
     return res.status(400).json({
       error_code: 'INVALID_DATA',
@@ -37,6 +38,7 @@ export const getCustomerRides = async (
         });
       }
     }
+
     const rides = await prisma.ride.findMany({
       where: {
         customer_id,
@@ -52,6 +54,7 @@ export const getCustomerRides = async (
         error_description: `Nenhuma corrida encontrada para o cliente com ID ${customer_id}.`,
       });
     }
+
     return res.status(200).json({
       message: 'Corridas encontradas com sucesso!',
       data: rides,
@@ -95,12 +98,14 @@ export const estimate = async (
   try {
     const routeDetails = await getRouteDetails(origin, destination);
     const { distance, duration, start_location, end_location } = routeDetails;
+    const staticMapUrl = getStaticMapUrl(routeDetails);
     const distanceValue = parseFloat(
       distance.replace(' km', '').replace(',', '.')
     );
     const drivers = await prisma.driver.findMany({
       where: { is_active: true },
     });
+
     if (!drivers || drivers.length === 0) {
       return res.status(404).json({
         error_code: 'NO_DRIVERS_AVAILABLE',
@@ -117,6 +122,7 @@ export const estimate = async (
         rating: driver.rating,
         cost: parseFloat((distanceValue * driver.rate).toFixed(2)),
       }));
+
     if (availableDrivers.length === 0) {
       return res.status(404).json({
         error_code: 'NO_DRIVERS_AVAILABLE',
@@ -137,6 +143,7 @@ export const estimate = async (
         status: 'pending',
       },
     });
+
     return res.status(200).json({
       message: 'Estimativa calculada com sucesso!',
       data: {
@@ -149,6 +156,7 @@ export const estimate = async (
           (a: { cost: number }, b: { cost: number }) => a.cost - b.cost
         ),
         original_route: routeDetails,
+        static_map: staticMapUrl,
       },
     });
   } catch (error: any) {
@@ -164,6 +172,7 @@ export const confirmRide = async (
   res: Response
 ): Promise<Response> => {
   const { customer_id, driver_id } = req.body;
+
   if (!customer_id || !driver_id) {
     return res.status(400).json({
       error_code: 'INVALID_DATA',
@@ -177,26 +186,13 @@ export const confirmRide = async (
       where: { customer_id, status: 'pending' },
     });
 
-    if (
-      !ride ||
-      !ride.distance ||
-      !ride.origin.trim() ||
-      !ride.destination.trim()
-    ) {
-      return res.status(400).json({
-        error_code: 'INVALID_DATA',
-        error_description:
-          'Os dados da corrida não estão completos (origem, destino ou distância).',
+    if (!ride) {
+      return res.status(404).json({
+        error_code: 'NO_RIDE_FOUND',
+        error_description: 'Nenhuma corrida pendente encontrada para o cliente.',
       });
     }
 
-    if (ride.origin === ride.destination) {
-      return res.status(400).json({
-        error_code: 'INVALID_DATA',
-        error_description:
-          'Os endereços de origem e destino não podem ser iguais.',
-      });
-    }
     const driver = await prisma.driver.findFirst({
       where: { id: driver_id, is_active: true },
     });
@@ -204,24 +200,7 @@ export const confirmRide = async (
     if (!driver) {
       return res.status(400).json({
         error_code: 'INVALID_DRIVER',
-        error_description:
-          'O motorista informado não é válido ou não está ativo.',
-      });
-    }
-    const distanceValue = parseFloat(
-      ride.distance.replace(' km', '').replace(',', '.')
-    );
-    if (distanceValue < driver.min_distance) {
-      return res.status(400).json({
-        error_code: 'INVALID_DISTANCE',
-        error_description: `A distância (${distanceValue} km) da corrida é menor que a mínima aceita pelo motorista (${driver.min_distance} km).`,
-      });
-    }
-
-    if (distanceValue > driver.max_distance) {
-      return res.status(400).json({
-        error_code: 'INVALID_DISTANCE',
-        error_description: `A distância (${distanceValue} km) da corrida é maior que a máxima aceita pelo motorista (${driver.max_distance} km).`,
+        error_description: 'O motorista informado não é válido ou não está ativo.',
       });
     }
     const updatedRide = await prisma.ride.update({
@@ -231,13 +210,10 @@ export const confirmRide = async (
         status: 'confirmed',
       },
     });
+
     return res.status(200).json({
       message: 'Corrida confirmada com sucesso!',
-      data: {
-        customer_id,
-        driver_id,
-        status: 'confirmed',
-      },
+      data: updatedRide,
     });
   } catch (error: any) {
     return res.status(500).json({

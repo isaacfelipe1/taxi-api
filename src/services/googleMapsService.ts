@@ -19,12 +19,12 @@ export const getRouteDetails = async (origin: string, destination: string) => {
       throw new Error('Nenhuma rota encontrada entre os pontos fornecidos.');
     }
 
-    const distance = route.legs[0].distance.text;
-    const duration = route.legs[0].duration.text;
-
+    const leg = route.legs[0]; 
     return {
-      distance,
-      duration,
+      distance: leg.distance.text,
+      duration: leg.duration.text,
+      start_location: leg.start_location, 
+      end_location: leg.end_location, 
       points: route.overview_polyline.points,
     };
   } catch (error: any) {

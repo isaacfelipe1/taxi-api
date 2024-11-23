@@ -1,6 +1,7 @@
 import axios from 'axios';
 
 const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_API_KEY;
+
 export interface RouteDetails {
   distance: string;
   duration: string;
@@ -8,7 +9,6 @@ export interface RouteDetails {
   end_location: { lat: number; lng: number };
   points: string;
 }
-
 export const getRouteDetails = async (
   origin: string,
   destination: string
@@ -41,3 +41,20 @@ export const getRouteDetails = async (
     throw new Error(`Erro ao calcular rota: ${error.message}`);
   }
 };
+export const getStaticMapUrl = (routeDetails: RouteDetails): string => {
+  const baseUrl = `https://maps.googleapis.com/maps/api/staticmap`;
+
+  const params = new URLSearchParams({
+    size: '800x600', 
+    path: `enc:${routeDetails.points}`, 
+    markers: `color:green|label:A|${routeDetails.start_location.lat},${routeDetails.start_location.lng}`,
+    key: GOOGLE_MAPS_API_KEY!,
+  });
+  params.append(
+    'markers',
+    `color:red|label:B|${routeDetails.end_location.lat},${routeDetails.end_location.lng}`
+  );
+
+  return `${baseUrl}?${params.toString()}`;
+};
+
